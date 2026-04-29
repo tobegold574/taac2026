@@ -1,92 +1,92 @@
-# PCVRHyFormer - Post-Click Conversion Rate Prediction
+# PCVRHyFormer - 点击后转化率预测
 
-A hybrid transformer model for post-click conversion rate prediction, featuring Multi-Sequence HyFormer blocks with RankMixer architecture.
+用于点击后转化率预测的混合Transformer模型，采用多序列HyFormer块和RankMixer架构。
 
-## Project Structure
+## 项目结构
 
 ```
 TAAC2026/
-├── train.py          # Training entry point with extensive hyperparameter support
-├── trainer.py        # PCVRHyFormerRankingTrainer (BCE/Focal Loss, AUC monitoring, early stopping)
-├── model.py          # Model definition: HyFormer + MultiSeqQueryGenerator + RankMixerBlock
-├── dataset.py        # PCVRParquetDataset for efficient Parquet data loading
-├── utils.py          # Logging, early stopping, random seed, Focal Loss utilities
-├── run.sh            # Default launch script (RankMixer mode)
-└── ns_groups.json    # Feature grouping configuration (example)
+├── train.py          # 训练入口，支持大量超参数配置
+├── trainer.py        # PCVRHyFormerRankingTrainer (BCE/Focal Loss, AUC监控, 早停)
+├── model.py          # 模型定义: HyFormer + MultiSeqQueryGenerator + RankMixerBlock
+├── dataset.py        # PCVRParquetDataset，高效读取Parquet数据
+├── utils.py          # 日志、早停、随机种子、Focal Loss工具
+├── run.sh            # 默认启动脚本 (RankMixer模式)
+└── ns_groups.json    # 特征分组配置示例
 ```
 
-## Model Architecture
+## 模型架构
 
-### Core Components
+### 核心组件
 
-- **MultiSeqHyFormerBlock**: Multi-sequence hybrid transformer block that independently processes each sequence domain
-- **MultiSeqQueryGenerator**: Generates query tokens independently per sequence domain using global information
-- **RankMixerBlock**: Query Boosting module with three modes:
-  - `full`: Token mixing + per-token FFN (requires d_model divisible by T)
-  - `ffn_only`: Per-token FFN only
-  - `none`: Identity passthrough
+- **MultiSeqHyFormerBlock**: 多序列混合Transformer块，独立处理每个序列域
+- **MultiSeqQueryGenerator**: 基于全局信息为每个序列域独立生成Query token
+- **RankMixerBlock**: Query Boosting模块，三种模式:
+  - `full`: Token混合 + Per-token FFN（要求 d_model 能被 T 整除）
+  - `ffn_only`: 仅Per-token FFN
+  - `none`: 恒等映射
 
-### Sequence Encoders
+### 序列编码器
 
-Three variants supported via `--seq_encoder_type`:
+通过 `--seq_encoder_type` 选择三种变体:
 
-- `swiglu`: Efficient attention-free encoder (SwiGLU activation)
-- `transformer`: Standard self-attention with optional RoPE
-- `longer`: Top-K compressed encoder (cross-attention for long sequences, self-attention for short)
+- `swiglu`: 高效无注意力编码器 (SwiGLU激活)
+- `transformer`: 标准自注意力 + 可选RoPE
+- `longer`: Top-K压缩编码器（长序列用交叉注意力，短序列用自注意力）
 
 ### NS Tokenizer
 
-Two variants via `--ns_tokenizer_type`:
+两种变体，通过 `--ns_tokenizer_type` 选择:
 
-- `group`: Projects each feature group to one NS token (requires `ns_groups.json`)
-- `rankmixer`: Concatenates all embeddings, splits into equal chunks (token count tunable)
+- `group`: 每个特征组映射到一个NS token（需要 `ns_groups.json`）
+- `rankmixer`: 所有embedding拼接后分块（token数量可调）
 
-## Training
+## 训练
 
-### Quick Start
+### 快速开始
 
 ```bash
-# Default configuration (RankMixer mode)
+# 默认配置 (RankMixer模式)
 bash run.sh
 
-# With custom arguments
+# 自定义参数
 python train.py --num_epochs 10 --batch_size 256 --lr 1e-4
 ```
 
-### Key Hyperparameters
+### 关键超参数
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `--batch_size` | 256 | Batch size for training/validation |
-| `--lr` | 1e-4 | Learning rate for dense parameters (AdamW) |
-| `--num_epochs` | 999 | Maximum epochs (typically stopped earlier by early stopping) |
-| `--patience` | 5 | Early stopping patience |
-| `--d_model` | 64 | Backbone hidden dimension |
-| `--emb_dim` | 64 | Per-embedding dimension |
-| `--num_queries` | 1 | Query tokens per sequence domain |
-| `--num_hyformer_blocks` | 2 | Number of stacked MultiSeqHyFormerBlock layers |
-| `--num_heads` | 4 | Attention heads |
-| `--seq_encoder_type` | transformer | Sequence encoder variant |
-| `--ns_tokenizer_type` | rankmixer | NS tokenizer variant |
-| `--loss_type` | bce | Loss type: `bce` or `focal` |
+| 参数 | 默认值 | 描述 |
+|------|--------|------|
+| `--batch_size` | 256 | 训练/验证批次大小 |
+| `--lr` | 1e-4 | 密集参数学习率 (AdamW) |
+| `--num_epochs` | 999 | 最大轮数（通常被早停提前终止） |
+| `--patience` | 5 | 早停耐心值 |
+| `--d_model` | 64 | 主干隐藏层维度 |
+| `--emb_dim` | 64 | 每个Embedding的维度 |
+| `--num_queries` | 1 | 每个序列域的Query token数 |
+| `--num_hyformer_blocks` | 2 | MultiSeqHyFormerBlock堆叠层数 |
+| `--num_heads` | 4 | 注意力头数 |
+| `--seq_encoder_type` | transformer | 序列编码器变体 |
+| `--ns_tokenizer_type` | rankmixer | NS tokenizer变体 |
+| `--loss_type` | bce | 损失类型: `bce` 或 `focal` |
 
-### Sparse Parameter Handling
+### 稀疏参数处理
 
-- **Sparse Optimizer**: Adagrad for Embedding layers
-- **High-Cardinality Reinitialization**: `--reinit_sparse_after_epoch` enables cold-restart trick to reduce overfitting
-- **Embedding Skipping**: `--emb_skip_threshold` skips embedding creation for ultra-high-cardinality features
+- **稀疏优化器**: Adagrad用于Embedding层
+- **高基数重初始化**: `--reinit_sparse_after_epoch` 启用冷启动技巧减少过拟合
+- **Embedding跳过**: `--emb_skip_threshold` 跳过超高基数特征的embedding创建
 
-## Data Format
+## 数据格式
 
-Expects Parquet files with a `schema.json` describing feature layouts:
+期望Parquet文件配合 `schema.json` 描述特征布局:
 
-- `user_int` / `item_int`: Discrete features (scalar or multi-hot)
-- `user_dense` / `item_dense`: Dense float features
-- `seq_*`: Sequence features grouped by domain (seq_a, seq_b, seq_c, seq_d)
-- `timestamp`: Global timestamp for time-bucket computation
-- `label_type`: Label derivation (label=2 indicates positive)
+- `user_int` / `item_int`: 离散特征（标量或多热）
+- `user_dense` / `item_dense`: 稠密浮点特征
+- `seq_*`: 按域分组的序列特征 (seq_a, seq_b, seq_c, seq_d)
+- `timestamp`: 用于时间桶计算的全局时间戳
+- `label_type`: 标签推导 (label=2 表示正样本)
 
-## Default Configuration (run.sh)
+## 默认配置 (run.sh)
 
 ```bash
 python train.py \
@@ -99,10 +99,10 @@ python train.py \
     --num_workers 8
 ```
 
-## Evaluation
+## 评估
 
-Training monitors:
-- **Binary AUC** (primary metric)
+训练监控指标:
+- **Binary AUC**（主要指标）
 - **Binary LogLoss**
 
-Early stopping based on AUC improvement.
+基于AUC improvement的早停机制。
